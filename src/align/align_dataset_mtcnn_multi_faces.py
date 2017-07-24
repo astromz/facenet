@@ -1,4 +1,8 @@
-"""Performs face alignment and stores face thumbnails in the output directory."""
+"""Performs face alignment and stores ALL face thumbnails in the output directory.
+This code generalizes the original code by David Sandberg. 
+
+Author: MingZhao@NYTimes
+"""
 # MIT License
 # 
 # Copyright (c) 2016 David Sandberg
@@ -43,6 +47,8 @@ import matplotlib.patches as patches
 def main(args):
     sleep(random.random())
     output_dir = os.path.expanduser(args.output_dir)
+    print(output_dir)
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     # Store some git revision info in a text file in the log directory
@@ -58,9 +64,10 @@ def main(args):
         with sess.as_default():
             pnet, rnet, onet = align.detect_face.create_mtcnn(sess, None)
     
-    minsize = 20 #20 # minimum size of face
+    minsize = 60 #20 # minimum size of face
     threshold = [ 0.6, 0.7, 0.7 ]  # three steps's threshold
     factor = 0.709 # scale factor
+    margin_to_bbox_ratio = args.margin/ (args.image_size - args.margin) # margin to bbox ratio for output images, used to scale actual margin sizes
 
     # Add a random key to the filename to allow alignment using multiple processes
     random_key = np.random.randint(0, high=99999)
@@ -127,13 +134,14 @@ def main(args):
                             nrof_successfully_aligned_faces = 0
                             bb = np.zeros((nrof_faces, 4), dtype=np.int32)
                             for i in range(nrof_faces):
-                                outfile_name = os.path.join(output_dir_individuaL_img, '{}.png'.format(i))
-                                if not os.path.exists(outfile_name):
+                                outfile_name = os.path.join(output_dir_individuaL_img, '{}_{}.png'.format(filename, i))
+                                if not os.path.exists(outfile_name): 
                                     det = bounding_boxes[i,0:4]
-                                    bb[i, 0] = np.maximum(det[0]-args.margin/2, 0)
-                                    bb[i, 1] = np.maximum(det[1]-args.margin/2, 0)
-                                    bb[i, 2] = np.minimum(det[2]+args.margin/2, img_size[1])
-                                    bb[i, 3] = np.minimum(det[3]+args.margin/2, img_size[0])
+                                    actual_margin = np.round(np.mean((det[2]-det[0], det[3]-det[1])) * margin_to_bbox_ratio)
+                                    bb[i, 0] = np.maximum(det[0]- actual_margin//2, 0)
+                                    bb[i, 1] = np.maximum(det[1]- actual_margin//2, 0)
+                                    bb[i, 2] = np.minimum(det[2]+ actual_margin//2 +1, img_size[1])
+                                    bb[i, 3] = np.minimum(det[3]+ actual_margin//2 +1, img_size[0])
                                     cropped = img[bb[i, 1]:bb[i, 3],bb[i, 0]:bb[i, 2],:]
                                     scaled = misc.imresize(cropped, (args.image_size, args.image_size), interp='bicubic')
                                     misc.imsave(outfile_name, scaled)
@@ -155,8 +163,10 @@ def main(args):
                                 '''
                                 fig, ax = plt.subplots(1)
                                 ax.imshow(img, aspect='equal', shape=img_size)
-                                rectangles = [patches.Rectangle(bb[i,[0,1]], bb[i,2]-bb[i,0],bb[i,3]-bb[i,1], linewidth=1,edgecolor='lawngreen',facecolor='none') for i in range(nrof_faces)]
-                                [ax.add_patch(rect) for rect in rectangles]   # Add the patch to the Axes
+                                #rectangles = [patches.Rectangle(bb[i,[0,1]], bb[i,2]-bb[i,0],bb[i,3]-bb[i,1], linewidth=1,edgecolor='lawngreen',facecolor='none') for i in range(nrof_faces)]
+                                rectangles2 = [patches.Rectangle(bounding_boxes[i,[0,1]], bounding_boxes[i,2]-bounding_boxes[i,0],bounding_boxes[i,3]-bounding_boxes[i,1], linewidth=1,edgecolor='lime',facecolor='none') for i in range(nrof_faces)]                                
+                                [ax.add_patch(rect) for rect in rectangles2]
+                                #[ax.add_patch(rect) for rect in rectangles]   # Add the patch to the Axes
                                 ax.axis('off')
                                 fig.savefig(labeled_img_dir + filename + '.png', bbox_inches='tight')
                                 
